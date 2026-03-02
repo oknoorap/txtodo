@@ -1,0 +1,5 @@
+{
+  "name": "Todo.txt App",
+  "description": "A simple todo app based on the todo.txt format with projects, tags, and local storage.",
+  "requestFramePermissions": []
+}
