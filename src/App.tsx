@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useTodoStore } from './store';
 import { parseTodoList, serializeTodoList, ParsedTodo, parseTodo } from './lib/todotxt';
 import { format, isToday, isYesterday, isTomorrow, parseISO } from 'date-fns';
-import { Search, Plus, Download, Upload, Moon, Sun, Monitor, Trash2, CheckSquare, Square, GripVertical, ChevronDown, ChevronRight, HelpCircle } from 'lucide-react';
+import { Search, Plus, Download, Upload, Moon, Sun, Monitor, Trash2, CheckSquare, Square, GripVertical, ChevronDown, ChevronRight, HelpCircle, Menu } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -13,6 +13,7 @@ import { Separator } from '@/components/ui/separator';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
 function formatDateGroup(dateStr: string | null) {
   if (!dateStr) return 'No Date';
@@ -409,77 +410,95 @@ export default function App() {
     input.click();
   };
 
+  const SidebarContent = () => (
+    <div className="flex flex-col h-full">
+      <div className="p-4 border-b">
+        <h1 className="text-xl font-bold mb-4 tracking-tight">Projects</h1>
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search projects..."
+            className="pl-8 bg-background"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+      </div>
+      
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="p-2 space-y-0.5">
+          {filteredProjects.map(project => (
+            <div
+              key={project.id}
+              className={`flex items-center justify-between group px-2 py-1 text-sm rounded-sm cursor-pointer transition-colors ${
+                activeProjectId === project.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+              }`}
+              onClick={() => setActiveProject(project.id)}
+            >
+              <Input
+                className={`h-6 px-1 py-0 text-sm bg-transparent border-transparent shadow-none focus-visible:ring-0 focus-visible:border-transparent font-medium flex-1 truncate ${
+                  activeProjectId === project.id ? 'text-primary-foreground placeholder:text-primary-foreground/70' : 'text-foreground'
+                }`}
+                value={project.name}
+                onChange={(e) => updateProjectName(project.id, e.target.value)}
+              />
+              {Object.keys(projects).length > 1 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={`h-5 w-5 opacity-0 group-hover:opacity-100 shrink-0 ${
+                    activeProjectId === project.id ? 'text-primary-foreground hover:bg-primary-foreground/20' : 'text-muted-foreground hover:text-destructive'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteProject(project.id);
+                  }}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      </ScrollArea>
+
+      <div className="p-4 border-t">
+        <Button variant="outline" className="w-full justify-center" onClick={handleAddProject}>
+          <Plus className="mr-2 h-4 w-4" />
+          New Project
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <TooltipProvider>
       <div className="flex h-screen w-full bg-background text-foreground font-sans overflow-hidden">
-        {/* Sidebar */}
-        <div className="w-64 border-r bg-muted/30 flex flex-col">
-          <div className="p-4 border-b">
-            <h1 className="text-xl font-bold mb-4 tracking-tight">Projects</h1>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search projects..."
-                className="pl-8 bg-background"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-          
-          <ScrollArea className="flex-1 min-h-0">
-            <div className="p-2 space-y-0.5">
-              {filteredProjects.map(project => (
-                <div
-                  key={project.id}
-                  className={`flex items-center justify-between group px-2 py-1 text-sm rounded-sm cursor-pointer transition-colors ${
-                    activeProjectId === project.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
-                  }`}
-                  onClick={() => setActiveProject(project.id)}
-                >
-                  <Input
-                    className={`h-6 px-1 py-0 text-sm bg-transparent border-transparent shadow-none focus-visible:ring-0 focus-visible:border-transparent font-medium flex-1 truncate ${
-                      activeProjectId === project.id ? 'text-primary-foreground placeholder:text-primary-foreground/70' : 'text-foreground'
-                    }`}
-                    value={project.name}
-                    onChange={(e) => updateProjectName(project.id, e.target.value)}
-                  />
-                  {Object.keys(projects).length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={`h-5 w-5 opacity-0 group-hover:opacity-100 shrink-0 ${
-                        activeProjectId === project.id ? 'text-primary-foreground hover:bg-primary-foreground/20' : 'text-muted-foreground hover:text-destructive'
-                      }`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteProject(project.id);
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
-
-          <div className="p-4 border-t">
-            <Button variant="outline" className="w-full justify-center" onClick={handleAddProject}>
-              <Plus className="mr-2 h-4 w-4" />
-              New Project
-            </Button>
-          </div>
+        {/* Desktop Sidebar */}
+        <div className="hidden md:flex w-64 border-r bg-muted/30 flex-col shrink-0">
+          <SidebarContent />
         </div>
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {activeProject ? (
             <>
-              <header className="h-16 border-b flex items-center justify-between px-6 shrink-0">
-                <h2 className="text-2xl font-bold tracking-tight truncate">{activeProject.name}</h2>
-                <div className="flex items-center space-x-2">
+              <header className="h-16 border-b flex items-center justify-between px-4 md:px-6 shrink-0">
+                <div className="flex items-center space-x-3 overflow-hidden">
+                  <Sheet>
+                    <SheetTrigger asChild>
+                      <Button variant="ghost" size="icon" className="md:hidden shrink-0">
+                        <Menu className="h-5 w-5" />
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent side="left" className="w-72 p-0">
+                      <SidebarContent />
+                    </SheetContent>
+                  </Sheet>
+                  <h2 className="text-xl md:text-2xl font-bold tracking-tight truncate">{activeProject.name}</h2>
+                </div>
+                <div className="flex items-center space-x-1 md:space-x-2 shrink-0">
                   <Dialog>
                     <DialogTrigger asChild>
                       <Button variant="outline" size="icon">
@@ -675,16 +694,16 @@ export default function App() {
                 </ScrollArea>
                 
                 {/* Status Bar */}
-                <div className="h-10 border-t bg-muted/10 flex items-center justify-between px-6 shrink-0 text-xs text-muted-foreground">
-                  <div className="flex items-center space-x-4">
+                <div className="h-10 border-t bg-muted/10 flex items-center justify-between px-4 md:px-6 shrink-0 text-[10px] md:text-xs text-muted-foreground overflow-x-auto">
+                  <div className="flex items-center space-x-3 md:space-x-4 whitespace-nowrap">
                     <span><strong className="text-foreground font-medium">{todos.length}</strong> tasks</span>
                     <span><strong className="text-foreground font-medium">{todos.filter(t => t.completed).length}</strong> completed</span>
                     <span><strong className="text-foreground font-medium">{todos.filter(t => !t.completed).length}</strong> pending</span>
-                    <span><strong className="text-foreground font-medium">{new Set(todos.map(t => t.creationDate || format(new Date(), 'yyyy-MM-dd'))).size}</strong> days</span>
+                    <span className="hidden sm:inline"><strong className="text-foreground font-medium">{new Set(todos.map(t => t.creationDate || format(new Date(), 'yyyy-MM-dd'))).size}</strong> days</span>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 ml-4 shrink-0">
                     <span className="font-medium text-foreground">{todos.length > 0 ? Math.round((todos.filter(t => t.completed).length / todos.length) * 100) : 0}%</span>
-                    <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="w-16 md:w-24 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-primary transition-all duration-500" 
                         style={{ width: `${todos.length > 0 ? Math.round((todos.filter(t => t.completed).length / todos.length) * 100) : 0}%` }} 
@@ -695,7 +714,20 @@ export default function App() {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4 text-center">
+              <div className="md:hidden mb-4">
+                <Sheet>
+                  <SheetTrigger asChild>
+                    <Button variant="outline">
+                      <Menu className="h-4 w-4 mr-2" />
+                      Open Projects
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="left" className="w-72 p-0">
+                    <SidebarContent />
+                  </SheetContent>
+                </Sheet>
+              </div>
               Select or create a project to get started
             </div>
           )}
