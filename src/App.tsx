@@ -14,6 +14,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { useFavicon } from './hooks/useFavicon';
 
 function formatDateGroup(dateStr: string | null) {
   if (!dateStr) return 'No Date';
@@ -133,6 +134,7 @@ function SortableTodoItem({
 }
 
 export default function App() {
+  useFavicon();
   const { projects, activeProjectId, theme, setTheme, addProject, setActiveProject, updateProjectContent, updateProjectName, deleteProject, importProject } = useTodoStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
