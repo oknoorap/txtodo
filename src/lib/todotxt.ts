@@ -27,7 +27,7 @@ export function parseTodo(line: string): ParsedTodo {
     description = description.slice(2).trim();
     
     // Rule 2: Completion date
-    const dateMatch = description.match(/^(\d{4}-\d{2}-\d{2})\s+/);
+    const dateMatch = description.match(/^(\d{4}-\d{2}-\d{2})(?:\s+|$)/);
     if (dateMatch) {
       completionDate = dateMatch[1];
       description = description.slice(dateMatch[0].length).trim();
@@ -35,14 +35,14 @@ export function parseTodo(line: string): ParsedTodo {
   }
 
   // Rule 1 (Incomplete): Priority
-  const priorityMatch = description.match(/^\(([A-Z])\)\s+/);
+  const priorityMatch = description.match(/^\(([A-Z])\)(?:\s+|$)/);
   if (priorityMatch) {
     priority = priorityMatch[1];
     description = description.slice(priorityMatch[0].length).trim();
   }
 
   // Rule 2 (Incomplete): Creation date
-  const creationDateMatch = description.match(/^(\d{4}-\d{2}-\d{2})\s+/);
+  const creationDateMatch = description.match(/^(\d{4}-\d{2}-\d{2})(?:\s+|$)/);
   if (creationDateMatch) {
     creationDate = creationDateMatch[1];
     description = description.slice(creationDateMatch[0].length).trim();

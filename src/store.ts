@@ -5,6 +5,7 @@ export interface Project {
   id: string;
   name: string;
   content: string; // raw todo.txt content
+  trashedContent?: string;
 }
 
 interface TodoStore {
@@ -15,6 +16,7 @@ interface TodoStore {
   addProject: (name: string) => void;
   setActiveProject: (id: string) => void;
   updateProjectContent: (id: string, content: string) => void;
+  updateProjectTrashedContent: (id: string, content: string) => void;
   updateProjectName: (id: string, name: string) => void;
   deleteProject: (id: string) => void;
   importProject: (name: string, content: string) => void;
@@ -48,6 +50,12 @@ export const useTodoStore = create<TodoStore>()(
         projects: {
           ...state.projects,
           [id]: { ...state.projects[id], content }
+        }
+      })),
+      updateProjectTrashedContent: (id, content) => set((state) => ({
+        projects: {
+          ...state.projects,
+          [id]: { ...state.projects[id], trashedContent: content }
         }
       })),
       updateProjectName: (id, name) => set((state) => ({

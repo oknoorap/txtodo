@@ -36,7 +36,8 @@ function SortableTodoItem({
   handleUpdateTodo, 
   handleInsertTaskAfter, 
   handleIndentTodo, 
-  handleDeleteTodo 
+  handleDeleteTodo,
+  viewMode
 }: { 
   todo: ParsedTodo, 
   date: string, 
@@ -44,7 +45,8 @@ function SortableTodoItem({
   handleUpdateTodo: (t: ParsedTodo, d: string) => void, 
   handleInsertTaskAfter: (id: string, d: string) => void, 
   handleIndentTodo: (t: ParsedTodo, dir: 1 | -1) => void, 
-  handleDeleteTodo: (id: string) => void 
+  handleDeleteTodo: (id: string) => void,
+  viewMode: 'active' | 'trash'
 }) {
   const {
     attributes,
@@ -70,11 +72,13 @@ function SortableTodoItem({
       className={`group flex items-start space-x-2 py-1 px-2 rounded-md transition-colors hover:bg-muted/50`}
     >
       <button
-        onClick={() => handleToggleTodo(todo)}
-        className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors"
+        onClick={() => {
+          if (viewMode === 'active') handleToggleTodo(todo);
+        }}
+        className={`mt-0.5 shrink-0 transition-colors ${viewMode === 'active' ? 'text-muted-foreground hover:text-primary cursor-pointer' : 'text-muted-foreground/50 cursor-default'}`}
       >
         {todo.completed ? (
-          <CheckSquare className="h-4 w-4 text-primary" />
+          <CheckSquare className={`h-4 w-4 ${viewMode === 'active' ? 'text-primary' : 'text-muted-foreground/50'}`} />
         ) : (
           <Square className="h-4 w-4" />
         )}
@@ -82,14 +86,17 @@ function SortableTodoItem({
       <div className="flex-1 min-w-0 break-words flex items-center">
         <Input
           id={`todo-input-${todo.id}`}
-          className={`h-auto p-0 border-transparent bg-transparent shadow-none focus-visible:ring-0 focus-visible:border-transparent rounded-none text-sm transition-colors ${todo.completed ? 'line-through text-primary/30' : ''}`}
+          readOnly={viewMode === 'trash'}
+          className={`h-auto p-0 border-transparent bg-transparent shadow-none focus-visible:ring-0 focus-visible:border-transparent rounded-none text-sm transition-colors ${todo.completed ? 'line-through text-primary/30' : ''} ${viewMode === 'trash' ? 'cursor-default text-muted-foreground' : ''}`}
           value={`${todo.priority ? `(${todo.priority}) ` : ''}${todo.description.replace(/(?:^|\s)\+[^\s]+/g, '').replace(/(?:^|\s)@[^\s]+/g, '').trimStart()}`}
           onChange={(e) => {
+            if (viewMode === 'trash') return;
             const tags = todo.description.match(/(?:^|\s)[+@][^\s]+/g) || [];
             const newDesc = e.target.value + tags.join('');
             handleUpdateTodo(todo, newDesc);
           }}
           onKeyDown={(e) => {
+            if (viewMode === 'trash') return;
             if (e.key === 'Enter') {
               e.preventDefault();
               handleInsertTaskAfter(todo.id, date);
@@ -118,27 +125,61 @@ function SortableTodoItem({
           size="icon"
           className="h-6 w-6 text-muted-foreground hover:text-destructive"
           onClick={() => handleDeleteTodo(todo.id)}
+          title={viewMode === 'trash' ? 'Delete forever' : 'Move to trash'}
         >
           <Trash2 className="h-3 w-3" />
         </Button>
-        <div 
-          {...attributes} 
-          {...listeners}
-          className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground p-1"
-        >
-          <GripVertical className="h-4 w-4" />
-        </div>
+        {viewMode === 'active' && (
+          <div 
+            {...attributes} 
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground p-1"
+          >
+            <GripVertical className="h-4 w-4" />
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function NewTaskInput({ date, onAdd }: { date: string, onAdd: (text: string, date: string, depth: number) => void }) {
+  const [text, setText] = useState('');
+  const [depth, setDepth] = useState(0);
+
+  return (
+    <div className="flex items-center">
+      <div style={{ width: `${depth * 1.5}rem` }} className="shrink-0" />
+      <Input
+        placeholder={depth > 0 ? "Add a sub-task..." : "Add a task..."}
+        className="h-8 text-sm border-transparent hover:border-border focus-visible:border-border bg-transparent shadow-none flex-1"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && text.trim()) {
+            onAdd(text, date, depth);
+            setText('');
+            setDepth(0);
+          } else if (e.key === 'Tab') {
+            e.preventDefault();
+            setDepth(d => Math.max(0, Math.min(5, d + (e.shiftKey ? -1 : 1))));
+          } else if (e.key === 'Backspace' && text === '' && depth > 0) {
+            e.preventDefault();
+            setDepth(d => Math.max(0, d - 1));
+          }
+        }}
+      />
     </div>
   );
 }
 
 export default function App() {
   useFavicon();
-  const { projects, activeProjectId, theme, setTheme, addProject, setActiveProject, updateProjectContent, updateProjectName, deleteProject, importProject } = useTodoStore();
+  const { projects, activeProjectId, theme, setTheme, addProject, setActiveProject, updateProjectContent, updateProjectTrashedContent, updateProjectName, deleteProject, importProject } = useTodoStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [todos, setTodos] = useState<ParsedTodo[]>([]);
+  const [viewMode, setViewMode] = useState<'active' | 'trash'>('active');
   const lastSerializedRef = useRef<string>('');
 
   const activeProject = activeProjectId ? projects[activeProjectId] : null;
@@ -178,19 +219,24 @@ export default function App() {
       lastSerializedRef.current = '';
       return;
     }
-    if (activeProject.content !== lastSerializedRef.current) {
-      const parsed = parseTodoList(activeProject.content);
+    const contentToParse = viewMode === 'trash' ? (activeProject.trashedContent || '') : activeProject.content;
+    if (contentToParse !== lastSerializedRef.current) {
+      const parsed = parseTodoList(contentToParse);
       setTodos(parsed);
-      lastSerializedRef.current = activeProject.content;
+      lastSerializedRef.current = contentToParse;
     }
-  }, [activeProject?.id, activeProject?.content]);
+  }, [activeProject?.id, activeProject?.content, activeProject?.trashedContent, viewMode]);
 
   const updateTodos = (newTodos: ParsedTodo[]) => {
     setTodos(newTodos);
     if (activeProject) {
       const serialized = serializeTodoList(newTodos);
       lastSerializedRef.current = serialized;
-      updateProjectContent(activeProject.id, serialized);
+      if (viewMode === 'trash') {
+        updateProjectTrashedContent(activeProject.id, serialized);
+      } else {
+        updateProjectContent(activeProject.id, serialized);
+      }
     }
   };
 
@@ -199,12 +245,21 @@ export default function App() {
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     groups[todayStr] = []; // Always include today
 
+    let currentParentDate = 'No Date';
+
     todos.forEach(todo => {
-      const date = todo.creationDate || todayStr;
+      if (todo.depth === 0) {
+        currentParentDate = todo.creationDate || 'No Date';
+      }
+      
+      const date = todo.depth === 0 ? (todo.creationDate || 'No Date') : currentParentDate;
+      
       if (!groups[date]) groups[date] = [];
       groups[date].push(todo);
     });
     return Object.entries(groups).sort((a, b) => {
+      if (a[0] === 'No Date') return 1;
+      if (b[0] === 'No Date') return -1;
       return b[0].localeCompare(a[0]); // Sort descending
     });
   }, [todos]);
@@ -277,7 +332,10 @@ export default function App() {
     const index = newTodos.findIndex(t => t.id === todoId);
     if (index !== -1) {
       const currentDepth = newTodos[index].depth || 0;
-      const newTodoRaw = '  '.repeat(currentDepth);
+      let newTodoRaw = '  '.repeat(currentDepth);
+      if (date && date !== 'No Date') {
+        newTodoRaw += `${date} `;
+      }
       
       // Insert new parsed todo
       const newTodo = parseTodo(newTodoRaw);
@@ -293,8 +351,29 @@ export default function App() {
 
   const handleDeleteTodo = (todoId: string) => {
     if (!activeProject) return;
-    const newTodos = todos.filter(t => t.id !== todoId);
-    updateTodos(newTodos);
+    const index = todos.findIndex(t => t.id === todoId);
+    if (index !== -1) {
+      const todo = todos[index];
+      const depth = todo.depth || 0;
+      const itemsToDelete = new Set([todo.id]);
+      
+      let i = index + 1;
+      while (i < todos.length && (todos[i].depth || 0) > depth) {
+        itemsToDelete.add(todos[i].id);
+        i++;
+      }
+      
+      const newTodos = todos.filter(t => !itemsToDelete.has(t.id));
+      
+      if (viewMode === 'active') {
+        const deletedTodos = todos.filter(t => itemsToDelete.has(t.id));
+        const deletedSerialized = serializeTodoList(deletedTodos);
+        const currentTrashed = activeProject.trashedContent ? activeProject.trashedContent + '\n' : '';
+        updateProjectTrashedContent(activeProject.id, currentTrashed + deletedSerialized);
+      }
+      
+      updateTodos(newTodos);
+    }
   };
 
   const handleDragEnd = (event: DragEndEvent, date: string) => {
@@ -363,12 +442,12 @@ export default function App() {
     }
   };
 
-  const handleAddTask = (text: string, date: string) => {
+  const handleAddTask = (text: string, date: string, depth: number = 0) => {
     if (text.trim() && activeProject) {
       const newTodos = [...todos];
       let newText = text.trim();
       const hasDate = /^\d{4}-\d{2}-\d{2}/.test(newText) || /^\([A-Z]\)\s+\d{4}-\d{2}-\d{2}/.test(newText);
-      if (!hasDate) {
+      if (!hasDate && date !== 'No Date') {
         if (newText.match(/^\([A-Z]\)\s+/)) {
           newText = newText.replace(/^(\([A-Z]\)\s+)/, `$1${date} `);
         } else {
@@ -376,8 +455,28 @@ export default function App() {
         }
       }
       
+      let insertIndex = -1;
+      let currentParentDate = 'No Date';
+      for (let i = 0; i < newTodos.length; i++) {
+        if (newTodos[i].depth === 0) {
+          currentParentDate = newTodos[i].creationDate || 'No Date';
+        }
+        const taskDate = newTodos[i].depth === 0 ? (newTodos[i].creationDate || 'No Date') : currentParentDate;
+        if (taskDate === date) {
+          insertIndex = i + 1;
+        }
+      }
+
+      let finalDepth = depth;
+      if (insertIndex === -1) {
+        finalDepth = 0;
+        insertIndex = newTodos.length;
+      }
+
+      newText = '  '.repeat(finalDepth) + newText;
       const newTodo = parseTodo(newText);
-      newTodos.push(newTodo);
+      
+      newTodos.splice(insertIndex, 0, newTodo);
       updateTodos(newTodos);
     }
   };
@@ -498,7 +597,9 @@ export default function App() {
                       <SidebarContent />
                     </SheetContent>
                   </Sheet>
-                  <h2 className="text-xl md:text-2xl font-bold tracking-tight truncate">{activeProject.name}</h2>
+                  <h2 className="text-xl md:text-2xl font-bold tracking-tight truncate">
+                    {activeProject.name} {viewMode === 'trash' && <span className="text-destructive text-sm ml-2">(Trash)</span>}
+                  </h2>
                 </div>
                 <div className="flex items-center space-x-1 md:space-x-2 shrink-0">
                   <Dialog>
@@ -672,22 +773,16 @@ export default function App() {
                                     handleInsertTaskAfter={handleInsertTaskAfter}
                                     handleIndentTodo={handleIndentTodo}
                                     handleDeleteTodo={handleDeleteTodo}
+                                    viewMode={viewMode}
                                   />
                                 ))}
                               </SortableContext>
                             </DndContext>
-                            <div className="px-2 pt-1">
-                              <Input
-                                placeholder="Add a task..."
-                                className="h-8 text-sm border-transparent hover:border-border focus-visible:border-border bg-transparent shadow-none"
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                                    handleAddTask(e.currentTarget.value, date);
-                                    e.currentTarget.value = '';
-                                  }
-                                }}
-                              />
-                            </div>
+                            {viewMode === 'active' && (
+                              <div className="px-2 pt-1">
+                                <NewTaskInput date={date} onAdd={handleAddTask} />
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -701,7 +796,13 @@ export default function App() {
                     <span><strong className="text-foreground font-medium">{todos.length}</strong> tasks</span>
                     <span><strong className="text-foreground font-medium">{todos.filter(t => t.completed).length}</strong> completed</span>
                     <span><strong className="text-foreground font-medium">{todos.filter(t => !t.completed).length}</strong> pending</span>
-                    <span className="hidden sm:inline"><strong className="text-foreground font-medium">{new Set(todos.map(t => t.creationDate || format(new Date(), 'yyyy-MM-dd'))).size}</strong> days</span>
+                    <button 
+                      onClick={() => setViewMode(viewMode === 'active' ? 'trash' : 'active')}
+                      className={`hover:text-foreground transition-colors ${viewMode === 'trash' ? 'text-destructive font-medium' : ''}`}
+                    >
+                      <Trash2 className="h-3 w-3 inline mr-1" />
+                      {viewMode === 'active' ? 'View Trash' : 'Back to Active'}
+                    </button>
                   </div>
                   <div className="flex items-center space-x-2 ml-4 shrink-0">
                     <span className="font-medium text-foreground">{todos.length > 0 ? Math.round((todos.filter(t => t.completed).length / todos.length) * 100) : 0}%</span>
