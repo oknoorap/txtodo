@@ -20,6 +20,10 @@ interface TodoStore {
   updateProjectName: (id: string, name: string) => void;
   deleteProject: (id: string) => void;
   importProject: (name: string, content: string) => void;
+  collapsedGroups: Record<string, boolean>;
+  collapsedTasks: Record<string, boolean>;
+  toggleGroup: (date: string) => void;
+  toggleTask: (id: string) => void;
 }
 
 export const useTodoStore = create<TodoStore>()(
@@ -82,7 +86,21 @@ export const useTodoStore = create<TodoStore>()(
           },
           activeProjectId: id
         };
-      })
+      }),
+      collapsedGroups: {},
+      collapsedTasks: {},
+      toggleGroup: (date) => set((state) => ({
+        collapsedGroups: {
+          ...state.collapsedGroups,
+          [date]: !state.collapsedGroups[date]
+        }
+      })),
+      toggleTask: (id) => set((state) => ({
+        collapsedTasks: {
+          ...state.collapsedTasks,
+          [id]: !state.collapsedTasks[id]
+        }
+      }))
     }),
     {
       name: 'todotxt-storage',

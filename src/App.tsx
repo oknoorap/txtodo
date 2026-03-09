@@ -37,7 +37,10 @@ function SortableTodoItem({
   handleInsertTaskAfter, 
   handleIndentTodo, 
   handleDeleteTodo,
-  viewMode
+  viewMode,
+  hasSubtasks,
+  isCollapsed,
+  onToggleCollapse
 }: { 
   todo: ParsedTodo, 
   date: string, 
@@ -46,7 +49,11 @@ function SortableTodoItem({
   handleInsertTaskAfter: (id: string, d: string) => void, 
   handleIndentTodo: (t: ParsedTodo, dir: 1 | -1) => void, 
   handleDeleteTodo: (id: string) => void,
-  viewMode: 'active' | 'trash'
+  viewMode: 'active' | 'trash',
+  hasSubtasks: boolean,
+  isCollapsed: boolean,
+  onToggleCollapse: () => void,
+  key?: string | number
 }) {
   const {
     attributes,
@@ -71,6 +78,16 @@ function SortableTodoItem({
       style={style}
       className={`group flex items-start space-x-2 py-1 px-2 rounded-md transition-colors hover:bg-muted/50`}
     >
+      <div className="flex items-center mt-0.5 shrink-0 w-4">
+        {hasSubtasks && (
+          <button
+            onClick={onToggleCollapse}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </button>
+        )}
+      </div>
       <button
         onClick={() => {
           if (viewMode === 'active') handleToggleTodo(todo);
@@ -175,12 +192,43 @@ function NewTaskInput({ date, onAdd }: { date: string, onAdd: (text: string, dat
 
 export default function App() {
   useFavicon();
-  const { projects, activeProjectId, theme, setTheme, addProject, setActiveProject, updateProjectContent, updateProjectTrashedContent, updateProjectName, deleteProject, importProject } = useTodoStore();
+  const { 
+    projects, activeProjectId, theme, setTheme, addProject, setActiveProject, 
+    updateProjectContent, updateProjectTrashedContent, updateProjectName, 
+    deleteProject, importProject,
+    collapsedGroups, collapsedTasks, toggleGroup, toggleTask
+  } = useTodoStore();
   const [searchQuery, setSearchQuery] = useState('');
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [todos, setTodos] = useState<ParsedTodo[]>([]);
   const [viewMode, setViewMode] = useState<'active' | 'trash'>('active');
   const lastSerializedRef = useRef<string>('');
+  const [currentDate, setCurrentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+  useEffect(() => {
+    const checkDate = () => {
+      const newDate = format(new Date(), 'yyyy-MM-dd');
+      if (newDate !== currentDate) {
+        setCurrentDate(newDate);
+      }
+    };
+    
+    const now = new Date();
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const timeUntilMidnight = tomorrow.getTime() - now.getTime();
+
+    const timer = setTimeout(() => {
+      checkDate();
+    }, timeUntilMidnight + 1000);
+
+    const interval = setInterval(checkDate, 60 * 60 * 1000);
+    window.addEventListener('focus', checkDate);
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+      window.removeEventListener('focus', checkDate);
+    };
+  }, [currentDate]);
 
   const activeProject = activeProjectId ? projects[activeProjectId] : null;
 
@@ -242,8 +290,7 @@ export default function App() {
 
   const groupedTodos = useMemo(() => {
     const groups: Record<string, ParsedTodo[]> = {};
-    const todayStr = format(new Date(), 'yyyy-MM-dd');
-    groups[todayStr] = []; // Always include today
+    groups[currentDate] = []; // Always include today
 
     let currentParentDate = 'No Date';
 
@@ -262,7 +309,7 @@ export default function App() {
       if (b[0] === 'No Date') return -1;
       return b[0].localeCompare(a[0]); // Sort descending
     });
-  }, [todos]);
+  }, [todos, currentDate]);
 
   const handleAddProject = () => {
     addProject('New Project');
@@ -419,10 +466,6 @@ export default function App() {
         updateTodos(newTodos);
       }
     }
-  };
-
-  const toggleGroup = (date: string) => {
-    setCollapsedGroups(prev => ({ ...prev, [date]: !prev[date] }));
   };
 
   const handleToggleTodo = (todo: ParsedTodo) => {
@@ -760,22 +803,66 @@ export default function App() {
                               onDragEnd={(e) => handleDragEnd(e, date)}
                             >
                               <SortableContext 
-                                items={dateTodos.map(t => t.id)}
+                                items={dateTodos.filter(t => {
+                                  // We need to filter out collapsed items from SortableContext too
+                                  let isVisible = true;
+                                  let currentCollapsedDepth = -1;
+                                  for (const todo of dateTodos) {
+                                    if (currentCollapsedDepth !== -1 && (todo.depth || 0) > currentCollapsedDepth) {
+                                      if (todo.id === t.id) isVisible = false;
+                                    }
+                                    if ((todo.depth || 0) <= currentCollapsedDepth) {
+                                      currentCollapsedDepth = -1;
+                                    }
+                                    if (collapsedTasks[todo.id]) {
+                                      currentCollapsedDepth = todo.depth || 0;
+                                    }
+                                  }
+                                  return isVisible;
+                                }).map(t => t.id)}
                                 strategy={verticalListSortingStrategy}
                               >
-                                {dateTodos.map(todo => (
-                                  <SortableTodoItem
-                                    key={todo.id}
-                                    todo={todo}
-                                    date={date}
-                                    handleToggleTodo={handleToggleTodo}
-                                    handleUpdateTodo={handleUpdateTodo}
-                                    handleInsertTaskAfter={handleInsertTaskAfter}
-                                    handleIndentTodo={handleIndentTodo}
-                                    handleDeleteTodo={handleDeleteTodo}
-                                    viewMode={viewMode}
-                                  />
-                                ))}
+                                {(() => {
+                                  const visibleTodos = [];
+                                  let currentCollapsedDepth = -1;
+
+                                  for (let i = 0; i < dateTodos.length; i++) {
+                                    const todo = dateTodos[i];
+                                    
+                                    if (currentCollapsedDepth !== -1 && (todo.depth || 0) > currentCollapsedDepth) {
+                                      continue;
+                                    }
+                                    
+                                    if ((todo.depth || 0) <= currentCollapsedDepth) {
+                                      currentCollapsedDepth = -1;
+                                    }
+
+                                    const hasSubtasks = i + 1 < dateTodos.length && (dateTodos[i + 1].depth || 0) > (todo.depth || 0);
+                                    const isCollapsed = collapsedTasks[todo.id] || false;
+
+                                    visibleTodos.push(
+                                      <SortableTodoItem
+                                        key={todo.id}
+                                        todo={todo}
+                                        date={date}
+                                        handleToggleTodo={handleToggleTodo}
+                                        handleUpdateTodo={handleUpdateTodo}
+                                        handleInsertTaskAfter={handleInsertTaskAfter}
+                                        handleIndentTodo={handleIndentTodo}
+                                        handleDeleteTodo={handleDeleteTodo}
+                                        viewMode={viewMode}
+                                        hasSubtasks={hasSubtasks}
+                                        isCollapsed={isCollapsed}
+                                        onToggleCollapse={() => toggleTask(todo.id)}
+                                      />
+                                    );
+
+                                    if (isCollapsed && hasSubtasks) {
+                                      currentCollapsedDepth = todo.depth || 0;
+                                    }
+                                  }
+                                  return visibleTodos;
+                                })()}
                               </SortableContext>
                             </DndContext>
                             {viewMode === 'active' && (
